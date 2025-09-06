@@ -1,0 +1,55 @@
+---
+alwaysApply: false
+---
+# Quick Reference: Xcode Build Settings for Permissions
+
+## Interactive AI Project - Required Build Settings
+
+### Debug Configuration
+
+```text
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access for speech recognition and interactive AI conversations."
+INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app uses speech recognition to convert your voice into text for AI conversations."
+```
+
+### Release Configuration
+
+```text
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access for speech recognition and interactive AI conversations."
+INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app uses speech recognition to convert your voice into text for AI conversations."
+```
+
+## How to Apply These Settings
+
+### Method 1: Xcode Interface
+
+1. Select project in navigator
+2. Choose target "Interactive AI"
+3. Go to "Build Settings" tab
+4. Search for "INFOPLIST_KEY"
+5. Add the required keys and values
+
+### Method 2: Direct project.pbxproj Edit
+
+Add these lines to both Debug and Release build configurations:
+
+```text
+INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access for speech recognition and interactive AI conversations.";
+INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app uses speech recognition to convert your voice into text for AI conversations.";
+```
+
+## Verification Steps
+
+1. Build the project
+2. Check that no "Multiple commands produce Info.plist" errors occur
+3. Run app on device/simulator
+4. Verify permission dialogs appear when accessing microphone/speech recognition
+5. Confirm permission descriptions match the configured text
+
+## Troubleshooting
+
+- **Error**: Multiple Info.plist commands → Remove manual Info.plist files
+- **Error**: Permission denied → Check INFOPLIST_KEY values are set
+- **Error**: No permission dialog → Verify keys are in both Debug/Release configs

@@ -1,0 +1,113 @@
+---
+globs: *.swift
+alwaysApply: false
+---
+# Info.plist and Permissions Configuration Rule
+
+## Rule Overview
+
+This rule defines the standard approach for managing Info.plist files and permissions in the Interactive AI project.
+
+## Core Principles
+
+### 1. Modern Xcode Approach (Preferred)
+
+- **ALWAYS** use Xcode's auto-generated Info.plist with `GENERATE_INFOPLIST_FILE = YES`
+- **NEVER** create manual Info.plist files unless absolutely necessary
+- **EMBED** all Info.plist keys directly in Xcode build settings
+
+### 2. Permissions Configuration
+
+For speech recognition and AI conversation features, the following permissions MUST be configured:
+
+#### Required Permission Keys
+
+```text
+INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access for speech recognition and interactive AI conversations."
+INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app uses speech recognition to convert your voice into text for AI conversations."
+```
+
+#### Configuration Locations
+
+- **Debug Configuration**: Add to Debug build settings
+- **Release Configuration**: Add to Release build settings
+- **Consistency**: Both configurations MUST have identical permission descriptions
+
+### 3. Conflict Resolution
+
+If encountering "Multiple commands produce Info.plist" error:
+
+#### Step 1: Remove Manual Files
+
+- Delete any manually created Info.plist files
+- Ensure only auto-generated Info.plist exists
+
+#### Step 2: Verify Build Settings
+
+- Confirm `GENERATE_INFOPLIST_FILE = YES` in project settings
+- Add required `INFOPLIST_KEY_*` entries to build configurations
+
+#### Step 3: Validation
+
+- Build project to ensure no conflicts
+- Test permissions are properly embedded
+
+## Implementation Guidelines
+
+### When Adding New Permissions
+
+1. **Research** the specific `INFOPLIST_KEY_*` format for the permission
+2. **Add** to both Debug and Release configurations
+3. **Test** that permissions are requested at runtime
+4. **Document** the permission purpose in this rule file
+
+### When Modifying Existing Permissions
+
+1. **Update** permission descriptions in build settings
+2. **Maintain** consistency across Debug/Release
+3. **Verify** changes are reflected in generated Info.plist
+
+### Forbidden Practices
+
+- ❌ Creating manual Info.plist files when auto-generation is enabled
+- ❌ Having different permission descriptions between Debug/Release
+- ❌ Adding permissions only to one build configuration
+- ❌ Using deprecated permission request methods
+
+## Technical Implementation
+
+### Project Configuration
+
+```text
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access for speech recognition and interactive AI conversations."
+INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app uses speech recognition to convert your voice into text for AI conversations."
+```
+
+### Runtime Permission Handling
+
+- Use iOS 17+ compatible APIs with backward compatibility
+- Handle authorization states properly in SpeechManager
+- Provide user-friendly error messages for denied permissions
+
+## Related Components
+
+- **SpeechManager**: Handles permission requests and audio processing
+- **ConversationViewModel**: Manages permission-related UI states
+- **Build System**: Xcode project configuration and build settings
+
+## Maintenance Notes
+
+- **Review**: Regularly check for iOS permission requirement changes
+- **Update**: Modify permission descriptions if app functionality changes
+- **Test**: Verify permissions work correctly on different iOS versions
+- **Document**: Keep this rule updated with any configuration changes
+
+## Compliance
+
+All developers working on this project MUST follow this rule to ensure:
+
+- Consistent build configuration across environments
+- Proper permission handling for speech recognition features
+- Elimination of Info.plist conflicts and build errors
+- Modern iOS development best practices

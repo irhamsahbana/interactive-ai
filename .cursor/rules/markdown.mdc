@@ -1,0 +1,153 @@
+---
+trigger: glob
+glob: *.md
+---
+
+# Markdown Formatting Standards
+
+## Mandatory Compliance
+
+**IMPORTANT**: All markdown files in this project MUST follow these formatting standards. These rules are not optional and must be adhered to in all documentation, README files, and any other markdown content.
+
+## MD022: Headings Should Be Surrounded by Blank Lines
+
+All headings (H2, H3, etc.) must have blank lines before and after them for proper readability and structure.
+
+### Correct Format
+
+```markdown
+Some content here.
+
+## This is a proper heading
+
+Content following the heading.
+
+### This is a proper subheading
+
+More content here.
+```
+
+### Incorrect Format
+
+```markdown
+Some content here.
+## This heading has no blank line before it
+Content immediately after heading.
+```
+
+**Rules**:
+
+- Add one blank line before each heading
+- Add one blank line after each heading (when appropriate)
+- This applies to all heading levels (H2, H3, H4, etc.)
+
+## MD040: Fenced Code Blocks Should Have a Language Specified
+
+All fenced code blocks must specify a language for proper syntax highlighting and clarity.
+
+### Correct Format for Code Blocks
+
+```go
+func main() {
+    fmt.Println("Hello, World!")
+}
+```
+
+```sql
+SELECT * FROM users WHERE active = true;
+```
+
+```bash
+npm install package-name
+```
+
+### Incorrect Format for Code Blocks
+
+```go
+func main() {
+    fmt.Println("Hello, World!")
+}
+```
+
+**Rules**:
+
+- Always specify language after opening backticks: ``` followed by language name
+- Common languages: `go`, `sql`, `bash`, `json`, `yaml`, `markdown`, `javascript`, `typescript`
+- Use `text` for plain text if no specific language applies
+
+## MD047: Files Should End with a Single Newline Character
+
+All markdown files must end with exactly one newline character to ensure consistent file formatting.
+
+### Correct Format for Files
+
+```markdown
+Last line of content.
+[single newline character at end]
+```
+
+### Incorrect Format for Files
+
+```markdown
+Last line of content.[no newline]
+```
+
+```markdown
+Last line of content.
+[multiple newline characters]
+
+
+```
+
+**Rules**:
+
+- Every markdown file must end with exactly one newline character
+- No trailing whitespace on the final line
+- This ensures consistent file formatting across different editors and systems
+
+## Enforcement and Quality Assurance
+
+### Pre-commit Checks
+
+All markdown files should be validated against these rules before committing changes to the repository.
+
+### Review Process
+
+During code reviews, markdown formatting compliance must be verified alongside code quality checks.
+
+### Automated Validation
+
+Consider using markdown linters to automatically enforce these standards in your development workflow.
+
+## Additional Markdown Best Practices
+
+### Consistent List Formatting
+
+Use consistent bullet points and indentation:
+
+```markdown
+- Item 1
+- Item 2
+  - Nested item
+  - Another nested item
+- Item 3
+```
+
+### Link Formatting
+
+Use descriptive link text:
+
+```markdown
+[Clean Architecture Principles](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+```
+
+### Table Formatting
+
+Ensure proper table alignment:
+
+```markdown
+| Column 1 | Column 2 | Column 3 |
+|----------|----------|----------|
+| Value 1  | Value 2  | Value 3  |
+| Value 4  | Value 5  | Value 6  |
+```
