@@ -42,10 +42,13 @@ class SpeechManager: ObservableObject {
     @Published var spectrumData: SpectrumData?
 
     private var audioEngine = AVAudioEngine()
-    private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioSession = AVAudioSession.sharedInstance()
+    private let language: Language
+    private let voiceChoice: VoiceChoice?
+    private let speechSynthesizer = AVSpeechSynthesizer()
 
     // MARK: - Audio Spectrum Analysis
     private let spectrumAnalyzer = AudioSpectrumAnalyzer()
@@ -56,14 +59,41 @@ class SpeechManager: ObservableObject {
     private var transcriptionSegments: [TranscriptionSegment] = []
     private var pauseThreshold: TimeInterval = 0.5 // 500ms pause threshold
 
-    init() {
+    init(language: Language = .english, voiceChoice: VoiceChoice? = nil) {
+        self.language = language
+        self.voiceChoice = voiceChoice ?? VoiceManager.shared.defaultVoice(for: language)
+        setupSpeechRecognizer()
         requestPermissions()
         setupSpectrumAnalyzer()
     }
 
     deinit {
         // Ensure cleanup when object is deallocated
-        stopRecording()
+        // Use a more gentle cleanup for deinit
+        if isRecording {
+            isRecording = false
+            recognitionTask?.cancel()
+            recognitionRequest?.endAudio()
+        }
+        
+        // Stop TTS if speaking
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+        
+        // Stop audio engine if running
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        
+        // Clear references
+        recognitionRequest = nil
+        recognitionTask = nil
+    }
+
+    // MARK: - Speech Recognizer Setup
+    private func setupSpeechRecognizer() {
+        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: language.localeIdentifier))
     }
 
     func requestPermissions() {
@@ -153,32 +183,39 @@ class SpeechManager: ObservableObject {
     }
 
     func stopRecording() {
-        // Stop audio engine first
-        if audioEngine.isRunning {
-            audioEngine.stop()
-        }
-
-        // Remove any existing taps from input node
-        let inputNode = audioEngine.inputNode
-        inputNode.removeTap(onBus: 0)
-
-        // Clean up recognition components
-        recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
-        recognitionRequest = nil
-        recognitionTask = nil
-
+        // Reset recording state first to prevent new operations
+        isRecording = false
+        
         // Stop spectrum analysis
         spectrumAnalyzer.stopAnalysis()
 
-        // Reset recording state
-        isRecording = false
-
-        // Reset audio session
-        do {
-            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            print("Failed to deactivate audio session: \(error)")
+        // Clean up recognition components in proper order
+        recognitionTask?.cancel()
+        recognitionRequest?.endAudio()
+        
+        // Give a brief moment for cleanup to complete
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            
+            // Remove any existing taps from input node
+            let inputNode = self.audioEngine.inputNode
+            inputNode.removeTap(onBus: 0)
+            
+            // Stop audio engine
+            if self.audioEngine.isRunning {
+                self.audioEngine.stop()
+            }
+            
+            // Clear recognition components
+            self.recognitionRequest = nil
+            self.recognitionTask = nil
+            
+            // Reset audio session
+            do {
+                try self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            } catch {
+                print("Failed to deactivate audio session: \(error)")
+            }
         }
     }
 
@@ -252,21 +289,24 @@ class SpeechManager: ObservableObject {
         spectrumAnalyzer.startAnalysis()
 
         // Start recognition task
-        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+        guard let speechRecognizer = speechRecognizer else {
+            errorMessage = "Speech recognizer not available for selected language"
+            return
+        }
+        
+        recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             DispatchQueue.main.async {
                 if let result = result {
                     self?.handleRecognitionResult(result)
                 }
 
                 if let error = error {
-                    let msg = error.localizedDescription
-                    // Treat "No speech detected" as a non-fatal info
-                    if msg.localizedCaseInsensitiveContains("No speech detected") {
-                        self?.errorMessage = ""   // don't surface it to UI
-                    } else if msg.localizedCaseInsensitiveContains("Recognition request was canceled") {
-                        self?.errorMessage = ""   // don't surface it to UI
+                    if let self = self, self.handleSpeechError(error) {
+                        // Only show user-relevant errors
+                        self.errorMessage = error.localizedDescription
                     } else {
-                        self?.errorMessage = msg
+                        // Internal error - don't show to user
+                        self?.errorMessage = ""
                     }
                     self?.stopRecording()
                 }
@@ -353,10 +393,76 @@ class SpeechManager: ObservableObject {
     func setPauseThreshold(_ threshold: TimeInterval) {
         pauseThreshold = threshold
     }
+    
+    // MARK: - Error Handling
+    private func handleSpeechError(_ error: Error) -> Bool {
+        let msg = error.localizedDescription
+        let errorCode = (error as NSError).code
+        
+        // Log all errors for debugging
+        print("Speech Framework Error - Code: \(errorCode), Message: \(msg)")
+        
+        // Filter out internal errors that shouldn't be shown to users
+        if msg.localizedCaseInsensitiveContains("No speech detected") {
+            return false // Don't show to user
+        } else if msg.localizedCaseInsensitiveContains("Recognition request was canceled") {
+            return false // Don't show to user
+        } else if errorCode == 4099 && msg.contains("connection from pid") {
+            // NSCocoaErrorDomain Code=4099 - Internal Speech Framework communication error
+            print("Speech Framework internal error (non-critical): \(msg)")
+            return false // Don't show to user
+        } else if msg.localizedCaseInsensitiveContains("The operation couldn't be completed") {
+            // Generic operation errors that are often internal
+            print("Speech Framework operation error: \(msg)")
+            return false // Don't show to user
+        }
+        
+        return true // Show to user
+    }
 
     func getCurrentAnalysis() -> SpeechMetrics? {
         guard !transcriptionSegments.isEmpty else { return nil }
         return performSpeechAnalysis()
+    }
+    
+    func changeLanguage(to newLanguage: Language) {
+        // Stop current recording if active
+        if isRecording {
+            stopRecording()
+        }
+        
+        // Update speech recognizer for new language
+        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: newLanguage.localeIdentifier))
+    }
+    
+    // MARK: - Text-to-Speech Methods
+    func speakText(_ text: String) {
+        let utterance = AVSpeechUtterance(string: text)
+        if let voiceChoice = voiceChoice {
+            utterance.voice = AVSpeechSynthesisVoice(identifier: voiceChoice.id)
+        }
+        utterance.rate = 0.5
+        utterance.volume = 0.8
+        
+        speechSynthesizer.speak(utterance)
+    }
+    
+    func stopSpeaking() {
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+    }
+    
+    func isSpeaking() -> Bool {
+        return speechSynthesizer.isSpeaking
+    }
+    
+    func changeVoiceChoice(to newVoiceChoice: VoiceChoice) {
+        // Stop any current speech
+        stopSpeaking()
+        
+        // Update voice choice (this would require recreating the SpeechManager in practice)
+        // For now, we'll just store the preference
     }
 
     // MARK: - Spectrum Analysis Setup

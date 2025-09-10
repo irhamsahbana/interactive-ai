@@ -14,6 +14,8 @@ import Observation
     var speechState = SpeechRecognitionState()
     var conversations: [ConversationMessage] = []
     var isProcessingAI = false
+    let language: Language
+    let voiceChoice: VoiceChoice?
 
     // MARK: - Managers
     @ObservationIgnored private let speechManager: SpeechManager
@@ -21,8 +23,10 @@ import Observation
     @ObservationIgnored private var errorDismissalTimer: Timer?
 
     // MARK: - Initialization
-    init(speechManager: SpeechManager = SpeechManager()) {
-        self.speechManager = speechManager
+    init(language: Language = .english, voiceChoice: VoiceChoice? = nil, speechManager: SpeechManager? = nil) {
+        self.language = language
+        self.voiceChoice = voiceChoice ?? VoiceManager.shared.defaultVoice(for: language)
+        self.speechManager = speechManager ?? SpeechManager(language: language, voiceChoice: self.voiceChoice)
         setupBindings()
     }
 
@@ -113,6 +117,11 @@ import Observation
     func clearConversation() {
         conversations.removeAll()
         clearTranscription()
+    }
+    
+    func testTTS() {
+        let testText = voiceChoice?.previewText ?? "Hello! I'm your AI assistant. How can I help you today?"
+        speechManager.speakText(testText)
     }
 
     // MARK: - Error Message Auto-Dismissal

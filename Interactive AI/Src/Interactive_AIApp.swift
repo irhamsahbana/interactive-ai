@@ -11,7 +11,8 @@ import SwiftUI
 struct Interactive_AIApp: App {
     var body: some Scene {
         WindowGroup {
-            ConversationView()
+            LanguageSelectionView()
+//            VoiceDebugView()
         }
     }
 }

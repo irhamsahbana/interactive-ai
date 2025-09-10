@@ -8,13 +8,43 @@
 import SwiftUI
 
 struct ConversationView: View {
-    private var viewModel = ConversationViewModel()
+    let language: Language
+    let voiceChoice: VoiceChoice?
+    private var viewModel: ConversationViewModel
+
+    init(language: Language = .english, voiceChoice: VoiceChoice? = nil) {
+        self.language = language
+        self.voiceChoice = voiceChoice ?? VoiceManager.shared.defaultVoice(for: language)
+        self.viewModel = ConversationViewModel(language: language, voiceChoice: self.voiceChoice)
+    }
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Interactive AI")
-                .font(.largeTitle)
-                .fontWeight(.bold)
+            VStack(spacing: 8) {
+                Text("Interactive AI")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                
+                // Language and Voice indicators
+                HStack(spacing: 16) {
+                    HStack(spacing: 8) {
+                        Text(language.flag)
+                            .font(.title2)
+                        Text(language.displayName)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack(spacing: 8) {
+                        Image(systemName: "speaker.wave.2")
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                        Text(voiceChoice?.displayName ?? "No Voice Selected")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
 
             // Conversation History at the top
             ConversationHistoryView(viewModel: viewModel)
@@ -46,6 +76,9 @@ struct ConversationView: View {
                 // Microphone button - easily reachable with thumb
                 MicrophoneButtonView(viewModel: viewModel)
 
+                // TTS Test button
+                TTSButtonView(viewModel: viewModel)
+                
                 // Action buttons - at the very bottom
                 ActionButtonsView(viewModel: viewModel)
             }
@@ -104,6 +137,28 @@ struct MicrophoneButtonView: View {
     }
 }
 
+struct TTSButtonView: View {
+    var viewModel: ConversationViewModel
+
+    var body: some View {
+        Button(action: {
+            viewModel.testTTS()
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "speaker.wave.2")
+                    .font(.title3)
+                Text("Test Voice")
+                    .font(.headline)
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(Color.green)
+            .cornerRadius(20)
+        }
+    }
+}
+
 struct ActionButtonsView: View {
     var viewModel: ConversationViewModel
 
@@ -125,5 +180,5 @@ struct ActionButtonsView: View {
 }
 
 #Preview {
-    ConversationView()
+    ConversationView(language: .english, voiceChoice: nil)
 }
