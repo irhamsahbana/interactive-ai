@@ -31,6 +31,15 @@ struct ConversationView: View {
                 // Transcribed text display - near microphone button
                 TranscriptionView(viewModel: viewModel)
 
+                // Spectrum visualization - show when recording
+                // if viewModel.speechState.isRecording {
+                //     SpectrumVisualizationView(
+                //         spectrumData: viewModel.speechState.spectrumData,
+                //         isRecording: viewModel.speechState.isRecording
+                //     )
+                //     .padding(.horizontal)
+                // }
+
                 // Recording status - near microphone button
                 RecordingStatusView(viewModel: viewModel)
 

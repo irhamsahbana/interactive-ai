@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import AVFoundation
 
 // MARK: - Speech Recognition Models
 struct SpeechRecognitionState {
@@ -13,6 +14,7 @@ struct SpeechRecognitionState {
     var transcribedText: String = ""
     var isAuthorized: Bool = false
     var errorMessage: String = ""
+    var spectrumData: SpectrumData? = nil
 }
 
 struct ConversationMessage: Identifiable {

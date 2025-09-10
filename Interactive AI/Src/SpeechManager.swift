@@ -9,11 +9,37 @@ import AVFoundation
 import Speech
 import SwiftUI
 
+// MARK: - Speech Analysis Models
+struct TranscriptionSegment {
+    let text: String
+    let timestamp: Date
+    let duration: TimeInterval
+
+    init(text: String, timestamp: Date = Date(), duration: TimeInterval = 0) {
+        self.text = text
+        self.timestamp = timestamp
+        self.duration = duration
+    }
+}
+
+struct SpeechMetrics {
+    let wpm: Int
+    let averagePauseLength: TimeInterval
+    let pauseCount: Int
+    let totalDuration: TimeInterval
+    let wordCount: Int
+
+    var formattedString: String {
+        return "WPM: \(wpm), pause length: \(String(format: "%.1f", averagePauseLength))s, pause count: \(pauseCount)"
+    }
+}
+
 class SpeechManager: ObservableObject {
     @Published var isRecording = false
     @Published var transcribedText = ""
     @Published var isAuthorized = false
     @Published var errorMessage = ""
+    @Published var spectrumData: SpectrumData?
 
     private var audioEngine = AVAudioEngine()
     private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
@@ -21,8 +47,18 @@ class SpeechManager: ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioSession = AVAudioSession.sharedInstance()
 
+    // MARK: - Audio Spectrum Analysis
+    private let spectrumAnalyzer = AudioSpectrumAnalyzer()
+
+    // MARK: - Speech Analysis Properties
+    private var recordingStartTime: Date?
+    private var lastTranscriptionTime: Date?
+    private var transcriptionSegments: [TranscriptionSegment] = []
+    private var pauseThreshold: TimeInterval = 0.5 // 500ms pause threshold
+
     init() {
         requestPermissions()
+        setupSpectrumAnalyzer()
     }
 
     deinit {
@@ -88,6 +124,11 @@ class SpeechManager: ObservableObject {
         transcribedText = ""
         errorMessage = ""
 
+        // Initialize speech analysis tracking
+        recordingStartTime = Date()
+        lastTranscriptionTime = Date()
+        transcriptionSegments.removeAll()
+
         do {
             try startSpeechRecognition()
         } catch {
@@ -104,6 +145,11 @@ class SpeechManager: ObservableObject {
         // Clear transcribed text and errors
         transcribedText = ""
         errorMessage = ""
+
+        // Clear analysis data
+        recordingStartTime = nil
+        lastTranscriptionTime = nil
+        transcriptionSegments.removeAll()
     }
 
     func stopRecording() {
@@ -121,6 +167,9 @@ class SpeechManager: ObservableObject {
         recognitionTask?.cancel()
         recognitionRequest = nil
         recognitionTask = nil
+
+        // Stop spectrum analysis
+        spectrumAnalyzer.stopAnalysis()
 
         // Reset recording state
         isRecording = false
@@ -152,6 +201,11 @@ class SpeechManager: ObservableObject {
 
         // Configure audio session
         try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+
+        // Set preferred sample rate for better compatibility
+        try audioSession.setPreferredSampleRate(44100.0)
+        try audioSession.setPreferredInputNumberOfChannels(1)
+
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
         // Create recognition request
@@ -161,13 +215,31 @@ class SpeechManager: ObservableObject {
         }
 
         recognitionRequest.shouldReportPartialResults = true
+        recognitionRequest.addsPunctuation = true
 
         // Configure audio engine with fresh setup
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        // Install tap on clean input node
+        // Create a valid recording format
+        var recordingFormat: AVAudioFormat
+
+        if let customFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: inputFormat.sampleRate,
+            channels: min(inputFormat.channelCount, 1), // Use mono for speech recognition
+            interleaved: false
+        ) {
+            recordingFormat = customFormat
+        } else {
+            // Fallback to input format if custom format creation fails
+            recordingFormat = inputFormat
+        }
+
+        // Install tap on clean input node with validated format
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             self?.recognitionRequest?.append(buffer)
+            // Process audio for spectrum analysis
+            self?.spectrumAnalyzer.processAudioBuffer(buffer)
         }
 
         // Prepare and start audio engine
@@ -176,24 +248,23 @@ class SpeechManager: ObservableObject {
 
         isRecording = true
 
+        // Start spectrum analysis
+        spectrumAnalyzer.startAnalysis()
+
         // Start recognition task
         recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             DispatchQueue.main.async {
                 if let result = result {
-                    self?.transcribedText = result.bestTranscription.formattedString
-
-                    if result.isFinal {
-                        self?.stopRecording()
-                    }
+                    self?.handleRecognitionResult(result)
                 }
 
                 if let error = error {
                     let msg = error.localizedDescription
-                    // Treat “No speech detected” as a non-fatal info
+                    // Treat "No speech detected" as a non-fatal info
                     if msg.localizedCaseInsensitiveContains("No speech detected") {
-                        self?.errorMessage = ""   // don’t surface it to UI
+                        self?.errorMessage = ""   // don't surface it to UI
                     } else if msg.localizedCaseInsensitiveContains("Recognition request was canceled") {
-                        self?.errorMessage = ""   // don’t surface it to UI
+                        self?.errorMessage = ""   // don't surface it to UI
                     } else {
                         self?.errorMessage = msg
                     }
@@ -201,5 +272,98 @@ class SpeechManager: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: - Speech Analysis Methods
+    private func handleRecognitionResult(_ result: SFSpeechRecognitionResult) {
+        let currentTime = Date()
+        let currentText = result.bestTranscription.formattedString
+
+        // Track transcription segments for analysis
+        if let lastTime = lastTranscriptionTime {
+            let timeSinceLastTranscription = currentTime.timeIntervalSince(lastTime)
+
+            // If there's a significant pause, record it
+            if timeSinceLastTranscription > pauseThreshold {
+                let pauseSegment = TranscriptionSegment(
+                    text: "",
+                    timestamp: lastTime,
+                    duration: timeSinceLastTranscription
+                )
+                transcriptionSegments.append(pauseSegment)
+            }
+        }
+
+        // Record the current transcription segment
+        let textSegment = TranscriptionSegment(
+            text: currentText,
+            timestamp: currentTime,
+            duration: 0
+        )
+        transcriptionSegments.append(textSegment)
+
+        lastTranscriptionTime = currentTime
+
+        // Update transcribed text with analysis
+        if result.isFinal {
+            let analysis = performSpeechAnalysis()
+            transcribedText = formatTranscriptionWithAnalysis(text: currentText, analysis: analysis)
+            stopRecording()
+        } else {
+            // For partial results, show current text without analysis
+            transcribedText = currentText
+        }
+    }
+
+    private func performSpeechAnalysis() -> SpeechMetrics {
+        guard let startTime = recordingStartTime else {
+            return SpeechMetrics(wpm: 0, averagePauseLength: 0, pauseCount: 0, totalDuration: 0, wordCount: 0)
+        }
+
+        let totalDuration = Date().timeIntervalSince(startTime)
+        let allText = transcriptionSegments.compactMap { $0.text.isEmpty ? nil : $0.text }.joined(separator: " ")
+        let wordCount = allText.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+
+        // Calculate WPM
+        let wpm = totalDuration > 0 ? Int(Double(wordCount) / (totalDuration / 60.0)) : 0
+
+        // Calculate pause statistics
+        let pauseSegments = transcriptionSegments.filter { $0.text.isEmpty }
+        let pauseCount = pauseSegments.count
+        let averagePauseLength = pauseCount > 0 ? pauseSegments.map { $0.duration }.reduce(0, +) / Double(pauseCount) : 0
+
+        return SpeechMetrics(
+            wpm: wpm,
+            averagePauseLength: averagePauseLength,
+            pauseCount: pauseCount,
+            totalDuration: totalDuration,
+            wordCount: wordCount
+        )
+    }
+
+    private func formatTranscriptionWithAnalysis(text: String, analysis: SpeechMetrics) -> String {
+        return """
+        \(text)
+
+        info: \(analysis.formattedString)
+        """
+    }
+
+    // MARK: - Configuration Methods
+    func setPauseThreshold(_ threshold: TimeInterval) {
+        pauseThreshold = threshold
+    }
+
+    func getCurrentAnalysis() -> SpeechMetrics? {
+        guard !transcriptionSegments.isEmpty else { return nil }
+        return performSpeechAnalysis()
+    }
+
+    // MARK: - Spectrum Analysis Setup
+    private func setupSpectrumAnalyzer() {
+        // Bind spectrum analyzer data to our published property
+        spectrumAnalyzer.$spectrumData
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$spectrumData)
     }
 }

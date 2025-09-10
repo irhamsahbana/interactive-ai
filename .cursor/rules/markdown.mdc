@@ -1,8 +1,7 @@
 ---
-trigger: glob
-glob: *.md
+globs: *.md
+alwaysApply: false
 ---
-
 # Markdown Formatting Standards
 
 ## Mandatory Compliance

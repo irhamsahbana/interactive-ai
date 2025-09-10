@@ -67,6 +67,13 @@ import Observation
                 }
             }
             .store(in: &cancellables)
+
+        speechManager.$spectrumData
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] spectrumData in
+                self?.speechState.spectrumData = spectrumData
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Public Methods
